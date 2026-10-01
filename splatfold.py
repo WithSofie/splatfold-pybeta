@@ -98,9 +98,13 @@ class BuildResult:
                 "output path would overwrite a source file: "
                 f"{destination}; choose a different output path"
             )
-        mode_source = destination if destination.exists() else self.included_paths[0]
+        mode_source = destination if destination.exists() else None
+        if mode_source is None and self.included_paths:
+            mode_source = self.included_paths[0]
         try:
-            output_mode = mode_source.stat().st_mode & 0o777
+            output_mode = (
+                mode_source.stat().st_mode & 0o777 if mode_source is not None else 0o644
+            )
         except OSError:
             output_mode = 0o644
         _write_output(destination, self.source, mode=output_mode)
@@ -189,6 +193,33 @@ def _parse_python(path: Path, source: str) -> ast.Module:
         location = f"{path}:{exc.lineno or '?'}:{exc.offset or '?'}"
         message = exc.msg or "invalid Python syntax"
         raise PreprocessorError(f"syntax error at {location}: {message}") from exc
+
+
+def _require_own_physical_line(
+    info: ModuleInfo,
+    node: ast.stmt,
+    description: str,
+) -> None:
+    """Reject statements that cannot be safely replaced as complete lines."""
+    unsafe = node.col_offset != 0
+    end_line = node.end_lineno or node.lineno
+    end_offset = node.end_col_offset
+
+    if not unsafe:
+        if end_offset is None:
+            unsafe = True
+        else:
+            # AST column offsets are UTF-8 byte offsets, not character indexes.
+            physical_line = info.lines[end_line - 1].rstrip("\r\n").encode("utf-8")
+            suffix = physical_line[end_offset:].lstrip()
+            unsafe = bool(suffix and not suffix.startswith(b"#"))
+
+    if unsafe:
+        raise PreprocessorError(
+            f"cannot safely rewrite {description} at {info.path}:{node.lineno}: "
+            "the statement must occupy its own physical line "
+            "(a trailing comment is allowed)"
+        )
 
 
 def _module_candidates(base: Path) -> tuple[Path, Path]:
@@ -288,6 +319,7 @@ class ProjectAnalyzer:
         for statement in tree.body:
             if isinstance(statement, ast.ImportFrom):
                 if statement.module == "__future__":
+                    _require_own_physical_line(info, statement, "future import")
                     info.future_imports.append(statement)
                     continue
 
@@ -305,6 +337,9 @@ class ProjectAnalyzer:
                                 f"from {path}"
                             )
                     else:
+                        _require_own_physical_line(
+                            info, statement, "local wildcard import"
+                        )
                         self._load(target)
 
             if _is_main_guard(statement):
@@ -437,6 +472,12 @@ class Renderer:
 
         rendered = self._apply_replacements(info.lines, replacements, info.path)
         self.active.pop()
+
+        # A valid module may omit its final newline. Once its source is placed
+        # before the importing module's next line, however, the two statements
+        # must not be concatenated into one physical line.
+        if not is_root and rendered and not rendered.endswith(("\n", "\r")):
+            rendered += "\n"
 
         if is_root or not self.markers:
             return rendered
@@ -585,7 +626,7 @@ class Renderer:
         replacements: list[_LineReplacement] = []
         for index, line in enumerate(info.lines[:2]):
             stripped = line.lstrip()
-            if index == 0 and stripped.startswith("#!"):
+            if index == 0 and line.startswith("#!"):
                 replacements.append(_LineReplacement(index, index + 1, ""))
                 continue
             if stripped.startswith("#") and _ENCODING_COOKIE_RE.search(line):
@@ -603,22 +644,23 @@ class Renderer:
         return None
 
     def _future_block(self) -> str:
-        statements: list[tuple[str, Path, int]] = []
+        features: list[tuple[str, Path, int]] = []
         seen: set[str] = set()
 
         for path in self.analyzer.discovery_order:
             info = self.analyzer.modules[path]
             for node in info.future_imports:
-                statement = ast.unparse(node).strip()
-                if statement not in seen:
-                    statements.append((statement, path, node.lineno))
-                    seen.add(statement)
+                for imported in node.names:
+                    if imported.name not in seen:
+                        features.append((imported.name, path, node.lineno))
+                        seen.add(imported.name)
 
-        if not statements:
+        if not features:
             return ""
 
         lines: list[str] = []
-        for statement, path, line_number in statements:
+        for feature, path, line_number in features:
+            statement = f"from __future__ import {feature}"
             label = self._display_path(path)
             if self.inline_source_map:
                 lines.append(f"{statement} # {label} {line_number}\n")
@@ -642,7 +684,14 @@ class Renderer:
             and isinstance(first.value, ast.Constant)
             and isinstance(first.value.value, str)
         ):
-            return first.end_lineno or first.lineno
+            end_line = first.end_lineno or first.lineno
+            if any(statement.lineno <= end_line for statement in info.tree.body[1:]):
+                raise PreprocessorError(
+                    "cannot safely hoist future imports after a root module "
+                    f"docstring that shares a physical line with other code at "
+                    f"{info.path}:{end_line}; put the other statement on a new line"
+                )
+            return end_line
 
         # A future statement may follow comments/blank lines. Inserting at the
         # beginning of the source body is valid because generated header lines

@@ -16,8 +16,8 @@ jobs:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -25,14 +25,15 @@ jobs:
       - run: python -m pip install -e ".[dev]"
       - run: ruff check splatfold.py tests
       - run: ruff format --check splatfold.py tests
-      - run: python -m pytest
+      - run: python -m coverage run -m pytest
+      - run: python -m coverage report
       - run: python -m compileall -q splatfold.py
 
   package:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
           cache: pip
@@ -42,10 +43,15 @@ jobs:
       - name: Test the wheel outside the source checkout
         run: |
           python -m venv /tmp/splatfold-wheel
-          /tmp/splatfold-wheel/bin/python -m pip install dist/*.whl
           cd /tmp
+          /tmp/splatfold-wheel/bin/python -m pip install --no-deps "$GITHUB_WORKSPACE"/dist/*.whl
+          /tmp/splatfold-wheel/bin/python -m pip check
           /tmp/splatfold-wheel/bin/splatfold --version
-      - uses: actions/upload-artifact@v4
+          /tmp/splatfold-wheel/bin/python -c "import pathlib, splatfold; assert pathlib.Path(splatfold.__file__).is_relative_to('/tmp/splatfold-wheel')"
+          /tmp/splatfold-wheel/bin/python -c "import importlib.metadata, splatfold; assert importlib.metadata.version('splatfold') == splatfold.__version__"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: distributions
           path: dist/
+          if-no-files-found: error
+          retention-days: 7

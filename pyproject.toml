@@ -30,7 +30,7 @@ classifiers = [
 
 [project.optional-dependencies]
 test = ["pytest>=8,<9"]
-dev = ["pytest>=8,<9", "ruff>=0.9"]
+dev = ["coverage[toml]>=7.6,<8", "pytest>=8,<9", "ruff>=0.9"]
 release = ["build>=1.2", "twine>=6"]
 
 [project.scripts]
@@ -51,6 +51,15 @@ version = {attr = "splatfold.VERSION"}
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"
 testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["splatfold"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true
 
 [tool.ruff]
 line-length = 88

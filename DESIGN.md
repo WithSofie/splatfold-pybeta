@@ -42,6 +42,10 @@ Conventional dependency `if __name__ == "__main__":` blocks without `else`
 are removed by default. A guard with `else` is rejected because deleting the
 whole statement would discard code that normal importing executes.
 
+Statements that Splatfold removes or replaces must occupy their own physical
+lines. A trailing comment is allowed. Sharing such a line with another Python
+statement is rejected explicitly rather than risking silent loss of code.
+
 ## Intentional limits
 
 All included definitions share one global namespace. Per-module values of
@@ -52,4 +56,3 @@ physically included.
 
 These limits are fundamental to source folding and must remain visible in user
 documentation and tests.
-

@@ -44,6 +44,11 @@ The project intentionally keeps its complete implementation in the standalone
 `splatfold.py` module. It has no runtime dependencies outside the Python
 standard library.
 
+CI tests Splatfold on CPython 3.9 through 3.14. Splatfold uses the parser from
+the interpreter that runs it, so that interpreter must understand every syntax
+feature used by the input project. It validates and folds source; it does not
+transpile newer Python syntax for older interpreters.
+
 ## Command-line and Python APIs
 
 The preferred command-line form uses a positional input:
@@ -317,6 +322,18 @@ from ..common import *
 ```python
 from . import *
 ```
+
+An expanded wildcard import must occupy its own physical line. A trailing
+comment is allowed:
+
+```python
+from tools import *  # folded by Splatfold
+```
+
+Splatfold rejects semicolon-separated forms such as
+`from tools import *; ready = True`, because replacing the whole physical line
+would otherwise silently discard unrelated code. Future imports that Splatfold
+hoists follow the same rule.
 
 ---
 

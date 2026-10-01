@@ -12,7 +12,8 @@ From this directory, run:
 python3 -m pip install -e ".[dev,release]"
 ruff check splatfold.py tests
 ruff format --check splatfold.py tests
-python3 -m pytest
+python3 -m coverage run -m pytest
+python3 -m coverage report
 python3 -m compileall -q splatfold.py
 python3 -m build
 python3 -m twine check dist/*

@@ -92,6 +92,20 @@ def test_duplicate_dependency_is_emitted_once(tmp_path: Path) -> None:
     assert "already included" in result.source
 
 
+@pytest.mark.parametrize("markers", [False, True])
+def test_dependency_without_final_newline_does_not_join_following_source(
+    tmp_path: Path, markers: bool
+) -> None:
+    entry = write(tmp_path / "main.py", "from dep import *\nprint(value)\n")
+    write(tmp_path / "dep.py", "value = 7")
+
+    result = splatfold.build(entry, markers=markers)
+    assert "value = 7\n" in result.source
+    completed = run(result.write())
+    assert completed.returncode == 0
+    assert completed.stdout == "7\n"
+
+
 def test_future_import_shebang_and_dependency_main_guard(tmp_path: Path) -> None:
     entry = write(
         tmp_path / "main.py",
@@ -108,6 +122,84 @@ def test_future_import_shebang_and_dependency_main_guard(tmp_path: Path) -> None
     assert '"""Application."""\nfrom __future__ import annotations' in result.source
     assert "dependency main" not in result.source
     completed = run(result.write())
+    assert completed.returncode == 0
+    assert completed.stdout == "3\n"
+
+
+def test_future_features_are_deduplicated_individually(tmp_path: Path) -> None:
+    entry = write(tmp_path / "main.py", "from a import *\nfrom b import *\n")
+    write(
+        tmp_path / "a.py",
+        "from __future__ import annotations, generator_stop\na = 1\n",
+    )
+    write(tmp_path / "b.py", "from __future__ import annotations\nb = 2\n")
+
+    result = splatfold.build(entry, markers=False)
+    assert result.source.count("from __future__ import annotations") == 1
+    assert result.source.count("from __future__ import generator_stop") == 1
+    compile(result.source, str(result.output_path), "exec")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "before = 1; from dep import *\n",
+        "from dep import *; after = 2\n",
+    ],
+)
+def test_local_wildcard_import_must_occupy_its_own_line(
+    tmp_path: Path, source: str
+) -> None:
+    entry = write(tmp_path / "main.py", source)
+    write(tmp_path / "dep.py", "value = 1\n")
+
+    with pytest.raises(
+        splatfold.PreprocessorError,
+        match=r"local wildcard import.*must occupy its own physical line",
+    ):
+        splatfold.build(entry)
+
+
+def test_future_import_must_occupy_its_own_line(tmp_path: Path) -> None:
+    entry = write(
+        tmp_path / "main.py",
+        "from __future__ import annotations; value = 1\n",
+    )
+
+    with pytest.raises(
+        splatfold.PreprocessorError,
+        match=r"future import.*must occupy its own physical line",
+    ):
+        splatfold.build(entry)
+
+
+def test_future_import_rejects_root_docstring_sharing_a_line(
+    tmp_path: Path,
+) -> None:
+    entry = write(
+        tmp_path / "main.py",
+        '"""Application."""; marker = 1\nfrom dep import *\n',
+    )
+    write(tmp_path / "dep.py", "from __future__ import annotations\nvalue = 1\n")
+
+    with pytest.raises(
+        splatfold.PreprocessorError,
+        match="docstring that shares a physical line",
+    ):
+        splatfold.build(entry)
+
+
+def test_rewritten_import_allows_a_trailing_comment(tmp_path: Path) -> None:
+    entry = write(
+        tmp_path / "main.py",
+        "from dep import *  # folded dependency\nprint(value)\n",
+    )
+    write(
+        tmp_path / "dep.py",
+        "from __future__ import annotations  # required\nvalue = 3\n",
+    )
+
+    completed = run(splatfold.build(entry).write())
     assert completed.returncode == 0
     assert completed.stdout == "3\n"
 
@@ -200,6 +292,17 @@ def test_coding_text_in_normal_source_is_not_removed(tmp_path: Path) -> None:
     result = splatfold.build(entry)
     assert 'message = "coding: utf-8"' in result.source
     assert completed_output(result.write()) == "coding: utf-8\n"
+
+
+def test_indented_hashbang_comment_is_not_treated_as_a_shebang(
+    tmp_path: Path,
+) -> None:
+    entry = write(tmp_path / "main.py", "from dep import *\nprint(value)\n")
+    write(tmp_path / "dep.py", "  #! ordinary indented comment\nvalue = 4\n")
+
+    result = splatfold.build(entry)
+    assert "  #! ordinary indented comment" in result.source
+    assert completed_output(result.write()) == "4\n"
 
 
 def test_public_exports_are_explicit() -> None:
@@ -429,6 +532,15 @@ def test_build_result_without_output_path_cannot_write() -> None:
     result = splatfold.BuildResult("value = 1\n", [], [], [])
     with pytest.raises(splatfold.PreprocessorError, match="no output path"):
         result.write()
+
+
+def test_standalone_build_result_uses_safe_default_mode(tmp_path: Path) -> None:
+    destination = tmp_path / "standalone.py"
+    result = splatfold.BuildResult("value = 1\n", [], [], [], output_path=destination)
+    assert result.write() == destination
+    assert destination.read_text(encoding="utf-8") == "value = 1\n"
+    if sys.platform != "win32":
+        assert destination.stat().st_mode & 0o777 == 0o644
 
 
 def test_invalid_encoding_is_reported_as_read_error(tmp_path: Path) -> None:

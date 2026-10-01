@@ -14,8 +14,9 @@ long-lived PyPI API token should be stored in the repository.
 5. Install the wheel in a new virtual environment outside the checkout.
 6. Use that installed `splatfold` command to check, build, and execute the
    Acute integration example.
-7. Merge the exact reviewed commit, create a matching signed version tag, and
-   publish a GitHub Release.
+7. Merge the exact reviewed commit, create a signed `v<VERSION>` tag such as
+   `v0.2.0`, and publish a GitHub Release. The workflow rejects any tag that
+   does not exactly match `splatfold.VERSION`.
 8. Let `.github/workflows/publish.yml` build fresh artifacts and publish them
    through the protected `pypi` environment.
 9. Verify the PyPI page, installation command, package hashes, CLI version, and
@@ -24,3 +25,7 @@ long-lived PyPI API token should be stored in the repository.
 Publishing is intentionally release-triggered. A successful local build or CI
 run must never upload a distribution by itself.
 
+Before the first release, configure a PyPI pending trusted publisher (or a
+trusted publisher on an already-created project) using the final GitHub owner
+and repository name, workflow filename `publish.yml`, and environment `pypi`.
+Protect that GitHub environment with the repository's release approval policy.
