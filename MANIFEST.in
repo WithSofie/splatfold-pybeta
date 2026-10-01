@@ -2,7 +2,7 @@ include CHANGELOG.md
 include CONTRIBUTING.md
 include DESIGN.md
 include LICENSE
+include RELEASING.md
 include SECURITY.md
 include readme.md
 recursive-include tests *.py
-

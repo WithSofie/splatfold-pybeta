@@ -98,7 +98,12 @@ class BuildResult:
                 "output path would overwrite a source file: "
                 f"{destination}; choose a different output path"
             )
-        _write_output(destination, self.source)
+        mode_source = destination if destination.exists() else self.included_paths[0]
+        try:
+            output_mode = mode_source.stat().st_mode & 0o777
+        except OSError:
+            output_mode = 0o644
+        _write_output(destination, self.source, mode=output_mode)
         self.output_path = destination
         return destination
 
@@ -674,7 +679,7 @@ def _default_output(input_path: Path) -> Path:
     return input_path.with_name(f"{input_path.stem}.flat.py")
 
 
-def _write_output(path: Path, source: str) -> None:
+def _write_output(path: Path, source: str, *, mode: int = 0o644) -> None:
     temporary: Path | None = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -691,6 +696,7 @@ def _write_output(path: Path, source: str) -> None:
             handle.write(source)
             handle.flush()
             os.fsync(handle.fileno())
+        os.chmod(temporary, mode)
         os.replace(temporary, path)
         temporary = None
     except OSError as exc:

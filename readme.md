@@ -27,13 +27,14 @@ However, during development, your project remains a normal multi-file Python pro
 
 ## Installation
 
-Splatfold currently requires Python 3.9 or newer:
+Splatfold requires Python 3.9 or newer. After the first PyPI release, install it
+with:
 
 ```zsh
 python3 -m pip install splatfold
 ```
 
-Until the first PyPI release, install a local checkout with:
+For now, install a local checkout with:
 
 ```zsh
 python3 -m pip install -e .

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -247,6 +248,23 @@ def test_custom_write_path_is_atomic_and_leaves_no_temporary_file(
     assert not list(destination.parent.glob(f".{destination.name}.*.tmp"))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX mode assertion")
+def test_write_preserves_existing_output_mode(tmp_path: Path) -> None:
+    entry = write(tmp_path / "main.py", "print('new')\n")
+    destination = write(tmp_path / "app.py", "old\n")
+    os.chmod(destination, 0o750)
+    splatfold.build(entry).write(destination)
+    assert destination.stat().st_mode & 0o777 == 0o750
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX mode assertion")
+def test_new_output_inherits_input_mode(tmp_path: Path) -> None:
+    entry = write(tmp_path / "main.py", "print('new')\n")
+    os.chmod(entry, 0o755)
+    output = splatfold.build(entry).write()
+    assert output.stat().st_mode & 0o777 == 0o755
+
+
 def test_named_and_plain_imports_are_not_expanded(tmp_path: Path) -> None:
     entry = write(
         tmp_path / "main.py",
@@ -364,3 +382,75 @@ def test_cli_version_uses_product_name() -> None:
     )
     assert completed.returncode == 0
     assert completed.stdout.strip() == f"splatfold {splatfold.VERSION}"
+
+
+def test_main_reports_dependencies_unresolved_imports_and_cycles(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    entry = write(
+        tmp_path / "main.py",
+        "from dep import *\nfrom math import *\n",
+    )
+    write(tmp_path / "dep.py", "from main import *\nvalue = 1\n")
+
+    return_code = splatfold.main(
+        [str(entry), "--check-only", "--list-deps", "--verbose"]
+    )
+    captured = capsys.readouterr()
+    assert return_code == 0
+    assert str(entry.resolve()) in captured.out
+    assert str((tmp_path / "dep.py").resolve()) in captured.out
+    assert "kept unresolved/external wildcard import 'math'" in captured.err
+    assert "cycle edge skipped" in captured.err
+    assert "OK; 2 source file(s)" in captured.err
+
+
+def test_main_returns_error_for_missing_input(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    missing = tmp_path / "missing.py"
+    assert splatfold.main([str(missing)]) == 2
+    assert "input file does not exist" in capsys.readouterr().err
+
+
+def test_build_validates_input_root_and_search_paths(tmp_path: Path) -> None:
+    non_python = write(tmp_path / "main.txt", "value = 1\n")
+    with pytest.raises(splatfold.PreprocessorError, match=r"must end in \.py"):
+        splatfold.build(non_python)
+
+    entry = write(tmp_path / "main.py", "value = 1\n")
+    with pytest.raises(splatfold.PreprocessorError, match="root directory"):
+        splatfold.build(entry, root=tmp_path / "missing-root")
+    with pytest.raises(splatfold.PreprocessorError, match="search path"):
+        splatfold.build(entry, search_paths=[tmp_path / "missing-search"])
+
+
+def test_build_result_without_output_path_cannot_write() -> None:
+    result = splatfold.BuildResult("value = 1\n", [], [], [])
+    with pytest.raises(splatfold.PreprocessorError, match="no output path"):
+        result.write()
+
+
+def test_invalid_encoding_is_reported_as_read_error(tmp_path: Path) -> None:
+    entry = tmp_path / "main.py"
+    entry.write_bytes(b"# coding: definitely-not-an-encoding\nvalue = 1\n")
+    with pytest.raises(splatfold.PreprocessorError, match="cannot read"):
+        splatfold.build(entry)
+
+
+def test_output_parent_that_is_a_file_is_reported(tmp_path: Path) -> None:
+    entry = write(tmp_path / "main.py", "value = 1\n")
+    parent_file = write(tmp_path / "not-a-directory", "occupied\n")
+    result = splatfold.build(entry)
+    with pytest.raises(splatfold.PreprocessorError, match="cannot write"):
+        result.write(parent_file / "output.py")
+
+
+def test_inline_map_handles_blank_line_and_final_line_without_newline(
+    tmp_path: Path,
+) -> None:
+    entry = write(tmp_path / "main.py", "value = 1\n\nprint(value)")
+    result = splatfold.build(entry, inline_source_map=True)
+    assert "\n\n" in result.source
+    assert result.source.endswith("# main.py 3")
+    compile(result.source, str(result.output_path), "exec")

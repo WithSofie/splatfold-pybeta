@@ -14,8 +14,8 @@ The project follows Semantic Versioning once its public API is released.
 - Added positional CLI input while retaining `-i` and `--input`.
 - Matched Python's package-before-module import resolution precedence.
 - Kept output writing compatible with Python 3.9.
-- Made output replacement atomic and durable before it replaces an existing
-  artifact.
+- Made output replacement atomic, synchronized file contents before replacement,
+  and preserved existing or input-file permissions.
 
 ### Fixed
 
