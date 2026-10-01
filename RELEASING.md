@@ -10,7 +10,7 @@ long-lived PyPI API token should be stored in the repository.
    out of `Unreleased`.
 3. Run the complete local checks documented in `CONTRIBUTING.md`.
 4. Build both distributions with `python -m build` and verify them with
-   `python -m twine check dist/*`.
+   `python -m twine check dist/*` and `check-wheel-contents dist/*.whl`.
 5. Install the wheel in a new virtual environment outside the checkout.
 6. Use that installed `splatfold` command to check, build, and execute the
    Acute integration example.

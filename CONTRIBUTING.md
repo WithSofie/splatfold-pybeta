@@ -12,11 +12,15 @@ From this directory, run:
 python3 -m pip install -e ".[dev,release]"
 ruff check splatfold.py tests
 ruff format --check splatfold.py tests
+mypy splatfold.py
 python3 -m coverage run -m pytest
 python3 -m coverage report
+uvx zizmor .github/workflows
 python3 -m compileall -q splatfold.py
+validate-pyproject pyproject.toml
 python3 -m build
 python3 -m twine check dist/*
+check-wheel-contents dist/*.whl
 ```
 
 Changes to resolution or rendering semantics must include a focused regression

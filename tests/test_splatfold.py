@@ -338,6 +338,20 @@ def test_output_cannot_overwrite_a_source_file(tmp_path: Path) -> None:
     with pytest.raises(splatfold.PreprocessorError, match="overwrite a source file"):
         splatfold.build(entry, output=entry)
 
+    result = splatfold.build(entry)
+    with pytest.raises(splatfold.PreprocessorError, match="overwrite a source file"):
+        result.write(entry)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="hard-link fixture")
+def test_output_cannot_alias_a_source_file_by_inode(tmp_path: Path) -> None:
+    entry = write(tmp_path / "main.py", "value = 1\n")
+    alias = tmp_path / "source-alias.py"
+    os.link(entry, alias)
+
+    with pytest.raises(splatfold.PreprocessorError, match="overwrite a source file"):
+        splatfold.build(entry, output=alias)
+
 
 def test_custom_write_path_is_atomic_and_leaves_no_temporary_file(
     tmp_path: Path,
@@ -534,6 +548,14 @@ def test_build_result_without_output_path_cannot_write() -> None:
         result.write()
 
 
+def test_path_expansion_errors_use_public_error_type() -> None:
+    with pytest.raises(
+        splatfold.SplatfoldError,
+        match="cannot resolve input path",
+    ):
+        splatfold.build("~splatfold-user-that-does-not-exist/main.py")
+
+
 def test_standalone_build_result_uses_safe_default_mode(tmp_path: Path) -> None:
     destination = tmp_path / "standalone.py"
     result = splatfold.BuildResult("value = 1\n", [], [], [], output_path=destination)
@@ -541,6 +563,15 @@ def test_standalone_build_result_uses_safe_default_mode(tmp_path: Path) -> None:
     assert destination.read_text(encoding="utf-8") == "value = 1\n"
     if sys.platform != "win32":
         assert destination.stat().st_mode & 0o777 == 0o644
+
+
+def test_build_result_revalidates_source_before_writing(tmp_path: Path) -> None:
+    destination = tmp_path / "invalid.py"
+    result = splatfold.BuildResult("def broken(\n", [], [], [], output_path=destination)
+
+    with pytest.raises(splatfold.SplatfoldError, match="generated file is not valid"):
+        result.write()
+    assert not destination.exists()
 
 
 def test_invalid_encoding_is_reported_as_read_error(tmp_path: Path) -> None:

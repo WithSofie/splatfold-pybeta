@@ -6,6 +6,10 @@ source valid, ordinary Python.
 
 > Splat modules open. Fold them into one file.
 
+Upgrading from the former Obtuse project? See the
+[migration guide](https://github.com/WithSofie/obtuse/blob/main/MIGRATING.md)
+for command compatibility and intentional safety changes.
+
 It recursively expands:
 
 ```python
@@ -75,6 +79,29 @@ result.write()
 
 This separation makes validation and build-system integration side-effect free
 until the caller explicitly writes the validated result.
+
+`build()` always reads, resolves, renders, and compile-checks the complete
+artifact before returning. Its keyword arguments correspond to the CLI's
+resolution, strictness, guard, marker, and tracing options. The returned
+`BuildResult` exposes:
+
+- `source`: validated generated Python source;
+- `included_paths`: absolute paths in render order, beginning with the entry;
+- `unresolved_wildcards`: preserved imports as `(source_path, module)` pairs;
+- `cycles`: skipped recursion edges as `(importer, target)` pairs;
+- `output_path`: the absolute default or requested destination.
+
+`BuildResult.write()` performs the only output mutation. It uses an atomic
+same-directory replacement, refuses to overwrite any included source, and
+revalidates the current `source` value immediately before writing. It returns
+the destination path. `SplatfoldError` is the public base exception;
+`ResolutionError` identifies unresolved imports in strict mode.
+
+The CLI returns status `0` on success and status `2` for argument, resolution,
+source, rendering, validation, or write errors. Diagnostics go to standard
+error; `--list-deps` writes its machine-friendly path list to standard output.
+Splatfold is still pre-1.0, so incompatible public-API changes require a minor
+version increment and changelog entry.
 
 ---
 

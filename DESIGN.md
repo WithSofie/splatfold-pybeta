@@ -14,12 +14,12 @@ meaning: include the referenced local source once at the import location.
    inclusion. Every other import is preserved.
 4. A source file is emitted at most once. Active recursion edges are reported
    as cycles and omitted from the generated module.
-5. The generated source is UTF-8 and is compiled for syntax validity before it
-   can be written.
+5. The generated source is UTF-8 and is compiled for syntax validity both when
+   built and immediately before it can be written.
 6. Writing is explicit in the Python API and atomic with respect to the final
    destination path.
 7. The input and every included source path are protected from accidental
-   output overwrite.
+   output overwrite, including filesystem aliases of the same file.
 8. The implementation remains a standalone standard-library-only Python file.
 
 ## Resolution

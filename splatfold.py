@@ -53,6 +53,30 @@ class ResolutionError(SplatfoldError):
     """Raised when strict local-module resolution fails."""
 
 
+def _resolve_user_path(path: str | Path, description: str) -> Path:
+    candidate = Path(path)
+    try:
+        return candidate.expanduser().resolve()
+    except (OSError, RuntimeError) as exc:
+        raise PreprocessorError(
+            f"cannot resolve {description} path {candidate}: {exc}"
+        ) from exc
+
+
+def _matches_source_path(destination: Path, sources: Iterable[Path]) -> bool:
+    for source in sources:
+        if destination == source:
+            return True
+        try:
+            if destination.samefile(source):
+                return True
+        except OSError:
+            # ``samefile`` requires both paths to exist. A new output path can
+            # still be compared safely by its resolved spelling above.
+            continue
+    return False
+
+
 @dataclass(frozen=True)
 class IncludeDirective:
     """A top-level wildcard import and its resolved local target, if any."""
@@ -88,16 +112,16 @@ class BuildResult:
 
     def write(self, path: str | Path | None = None) -> Path:
         """Write this validated build using UTF-8 and return its output path."""
-        destination = (
-            Path(path).expanduser().resolve() if path is not None else self.output_path
-        )
-        if destination is None:
+        destination_argument = path if path is not None else self.output_path
+        if destination_argument is None:
             raise PreprocessorError("no output path is associated with this build")
-        if destination in self.included_paths:
+        destination = _resolve_user_path(destination_argument, "output")
+        if _matches_source_path(destination, self.included_paths):
             raise PreprocessorError(
                 "output path would overwrite a source file: "
                 f"{destination}; choose a different output path"
             )
+        _validate_generated_source(self.source, str(destination))
         mode_source = destination if destination.exists() else None
         if mode_source is None and self.included_paths:
             mode_source = self.included_paths[0]
@@ -246,7 +270,7 @@ class ModuleResolver:
         self.roots: list[Path] = []
         seen: set[Path] = set()
         for item in roots:
-            resolved = item.expanduser().resolve()
+            resolved = _resolve_user_path(item, "module search")
             if resolved not in seen:
                 self.roots.append(resolved)
                 seen.add(resolved)
@@ -342,7 +366,7 @@ class ProjectAnalyzer:
                         )
                         self._load(target)
 
-            if _is_main_guard(statement):
+            if isinstance(statement, ast.If) and _is_main_guard(statement):
                 info.main_guards.append(statement)
 
         return info
@@ -433,22 +457,28 @@ class Renderer:
         # the combined body. The output gets one UTF-8 declaration at the top.
         replacements.extend(self._metadata_replacements(info, is_root=is_root))
 
-        for node in info.future_imports:
+        for future_import in info.future_imports:
             replacements.append(
-                _LineReplacement(node.lineno - 1, node.end_lineno or node.lineno, "")
+                _LineReplacement(
+                    future_import.lineno - 1,
+                    future_import.end_lineno or future_import.lineno,
+                    "",
+                )
             )
 
         if not is_root and not self.keep_main_guards:
-            for node in info.main_guards:
-                if node.orelse:
+            for main_guard in info.main_guards:
+                if main_guard.orelse:
                     raise PreprocessorError(
                         "cannot safely remove a dependency __main__ guard with "
-                        f"an else clause in {info.path}:{node.lineno}; rewrite "
+                        f"an else clause in {info.path}:{main_guard.lineno}; rewrite "
                         "the guard or use --keep-main-guards for literal inclusion"
                     )
                 replacements.append(
                     _LineReplacement(
-                        node.lineno - 1, node.end_lineno or node.lineno, ""
+                        main_guard.lineno - 1,
+                        main_guard.end_lineno or main_guard.lineno,
+                        "",
                     )
                 )
 
@@ -868,17 +898,17 @@ def _build_from_args(args: argparse.Namespace) -> BuildResult:
     if input_argument is None:
         raise PreprocessorError("an input file is required")
 
-    input_path = input_argument.expanduser().resolve()
+    input_path = _resolve_user_path(input_argument, "input")
     if not input_path.is_file():
         raise PreprocessorError(f"input file does not exist: {input_path}")
     if input_path.suffix != ".py":
         raise PreprocessorError(f"input file must end in .py: {input_path}")
 
-    root = (args.root or input_path.parent).expanduser().resolve()
+    root = _resolve_user_path(args.root or input_path.parent, "root")
     if not root.is_dir():
         raise PreprocessorError(f"root directory does not exist: {root}")
 
-    search_paths = [path.expanduser().resolve() for path in args.search_path]
+    search_paths = [_resolve_user_path(path, "search") for path in args.search_path]
     for path in search_paths:
         if not path.is_dir():
             raise PreprocessorError(f"search path does not exist: {path}")
@@ -898,12 +928,12 @@ def _build_from_args(args: argparse.Namespace) -> BuildResult:
     result = renderer.render()
 
     output_path = (
-        args.output.expanduser().resolve()
+        _resolve_user_path(args.output, "output")
         if args.output is not None
         else _default_output(input_path).resolve()
     )
 
-    if output_path in result.included_paths:
+    if _matches_source_path(output_path, result.included_paths):
         raise PreprocessorError(
             "output path would overwrite a source file: "
             f"{output_path}; choose a different -o/--output path"

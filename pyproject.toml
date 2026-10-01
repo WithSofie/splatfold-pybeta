@@ -30,8 +30,19 @@ classifiers = [
 
 [project.optional-dependencies]
 test = ["pytest>=8,<9"]
-dev = ["coverage[toml]>=7.6,<8", "pytest>=8,<9", "ruff>=0.9"]
-release = ["build>=1.2", "twine>=6"]
+dev = [
+    "coverage[toml]>=7.6,<8",
+    "mypy>=1.14,<1.19",
+    "pytest>=8,<9",
+    "ruff>=0.9",
+]
+release = [
+    "build>=1.2",
+    "check-wheel-contents>=0.6,<1",
+    "packaging>=24.2",
+    "twine>=6",
+    "validate-pyproject>=0.24",
+]
 
 [project.scripts]
 splatfold = "splatfold:main"
@@ -57,7 +68,8 @@ branch = true
 source = ["splatfold"]
 
 [tool.coverage.report]
-fail_under = 85
+fail_under = 90
+precision = 2
 show_missing = true
 skip_covered = true
 
@@ -67,3 +79,7 @@ target-version = "py39"
 
 [tool.ruff.lint]
 select = ["B", "E4", "E7", "E9", "F", "I", "PIE", "RUF", "UP"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
