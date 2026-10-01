@@ -548,12 +548,18 @@ def test_build_result_without_output_path_cannot_write() -> None:
         result.write()
 
 
-def test_path_expansion_errors_use_public_error_type() -> None:
+def test_path_expansion_errors_use_public_error_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_expanduser(_path: Path) -> Path:
+        raise OSError("simulated path expansion failure")
+
+    monkeypatch.setattr(Path, "expanduser", fail_expanduser)
     with pytest.raises(
         splatfold.SplatfoldError,
         match="cannot resolve input path",
     ):
-        splatfold.build("~splatfold-user-that-does-not-exist/main.py")
+        splatfold.build("main.py")
 
 
 def test_standalone_build_result_uses_safe_default_mode(tmp_path: Path) -> None:
