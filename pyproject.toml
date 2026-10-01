@@ -48,10 +48,10 @@ release = [
 splatfold = "splatfold:main"
 
 [project.urls]
-Homepage = "https://github.com/WithSofie/obtuse"
-Repository = "https://github.com/WithSofie/obtuse"
-Issues = "https://github.com/WithSofie/obtuse/issues"
-Changelog = "https://github.com/WithSofie/obtuse/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/WithSofie/splatfold"
+Repository = "https://github.com/WithSofie/splatfold"
+Issues = "https://github.com/WithSofie/splatfold/issues"
+Changelog = "https://github.com/WithSofie/splatfold/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
 py-modules = ["splatfold"]

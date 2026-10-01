@@ -7,7 +7,7 @@ source valid, ordinary Python.
 > Splat modules open. Fold them into one file.
 
 Upgrading from the former Obtuse project? See the
-[migration guide](https://github.com/WithSofie/obtuse/blob/main/MIGRATING.md)
+[migration guide](https://github.com/WithSofie/splatfold/blob/main/MIGRATING.md)
 for command compatibility and intentional safety changes.
 
 It recursively expands:
